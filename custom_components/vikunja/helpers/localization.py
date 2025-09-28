@@ -14,6 +14,9 @@ from __future__ import annotations
 from typing import Dict, Any
 import json
 import os
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 SUPPORTED_LANGS = {
     "en", "fr", "es", "pt", "ru", "hi", "zh-Hans", "ar", "bn", "id"
@@ -21,8 +24,34 @@ SUPPORTED_LANGS = {
 
 
 def get_language(hass) -> str:  # noqa: D401
-    lang = getattr(getattr(hass, "config", None), "language", "en") or "en"
-    return lang if lang in SUPPORTED_LANGS else "en"
+    """Return a normalized supported language code.
+
+    Home Assistant may expose languages like 'fr-FR' / 'fr_FR' / 'en-US'. We normalize
+    these to their base language if available. Falls back to English with a warning.
+    Only warning/error logs are used so they are visible even at default log levels.
+    """
+    raw = getattr(getattr(hass, "config", None), "language", "en") or "en"
+    raw_norm = str(raw).strip()
+    # Replace underscore with dash for consistency then lowercase
+    candidate = raw_norm.replace("_", "-").lower()
+    tried = [candidate]
+    if "-" in candidate:
+        base = candidate.split("-")[0]
+        if base not in tried:
+            tried.append(base)
+    for cand in tried:
+        if cand in SUPPORTED_LANGS:
+            if cand != raw_norm and cand != candidate:
+                # Different original format e.g. fr-FR -> fr
+                _LOGGER.warning("Vikunja voice assistant: Normalized HA language '%s' to '%s'", raw_norm, cand)
+            elif cand != raw_norm:
+                _LOGGER.warning("Vikunja voice assistant: Using '%s' localization (original '%s')", cand, raw_norm)
+            return cand
+    if raw_norm.lower() not in ("en", "en-us", "en_gb", "en-uk"):
+        _LOGGER.warning(
+            "Vikunja voice assistant: Unsupported language '%s'; falling back to English", raw_norm
+        )
+    return "en"
 
 
 # Base message keys
@@ -237,7 +266,8 @@ def _load_relative():  # lazy load
         rel_path = os.path.join(base_dir, 'translations', 'relative_phrases.json')
         with open(rel_path, 'r', encoding='utf-8') as f:  # noqa: PTH123
             _RELATIVE_PHRASES = json.load(f)
-    except Exception:  # noqa: BLE001
+    except Exception as err:  # noqa: BLE001
+        _LOGGER.warning("Vikunja voice assistant: Failed to load relative_phrases.json: %s", err)
         _RELATIVE_PHRASES = None
 
 

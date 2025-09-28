@@ -2,6 +2,9 @@ from __future__ import annotations
 
 from datetime import datetime
 from typing import Dict, List, Any, Optional
+import logging
+
+_LOGGER = logging.getLogger(__name__)
 
 # Optional localization imports are done lazily to avoid circulars when tests import
 # this module directly. We keep English defaults if localization module unavailable.
@@ -163,7 +166,15 @@ def build_detailed_response(
                 prefix = L("success_added", lang, title=task_title)  # type: ignore
                 return f"{prefix}{suffix}"
             except Exception:  # noqa: BLE001
-                pass
+                _LOGGER.warning(
+                    "Vikunja voice assistant: Localization template lookup failed for lang '%s'; using English fallback.",
+                    lang,
+                )
+        # If we reached here we expected localization but could not produce it fully
+        _LOGGER.warning(
+            "Vikunja voice assistant: Falling back to English detailed response for unsupported or failed localization lang='%s'", 
+            lang,
+        )
         return f"Successfully added task: {task_title}{suffix}"
 
     # English / fallback legacy behavior
